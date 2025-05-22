@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "ASN Evidence Collector",
+  "version": "1.0",
+  "description": "Collect evidence for multiple ASNs by searching and taking screenshots",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "downloads",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "ASN Evidence Collector"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+} 

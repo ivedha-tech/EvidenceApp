@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ASN Evidence Collector</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .title {
+      margin: 0;
+      color: #333;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+    }
+    .input-section {
+      margin-bottom: 20px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      resize: vertical;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+    button.clear {
+      background: #f44336;
+    }
+    button.clear:hover {
+      background: #da190b;
+    }
+    .progress-section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .progress-bar {
+      height: 4px;
+      background: #eee;
+      border-radius: 2px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #4CAF50;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .current-step {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+    .debug-log {
+      height: calc(100vh - 400px);
+      background: #1e1e1e;
+      border-radius: 4px;
+      padding: 15px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .debug-log .error {
+      color: #ff6b6b;
+    }
+    .debug-log .success {
+      color: #69db7c;
+    }
+    .debug-log .info {
+      color: #74c0fc;
+    }
+    .debug-log .timestamp {
+      color: #adb5bd;
+    }
+    .status-bar {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    .status-bar.processing {
+      display: block;
+      background: #fff3cd;
+      color: #856404;
+    }
+    .status-bar.success {
+      display: block;
+      background: #d4edda;
+      color: #155724;
+    }
+    .status-bar.error {
+      display: block;
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .stats {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      font-size: 14px;
+      display: flex;
+      gap: 20px;
+    }
+    .stats div {
+      margin: 5px 0;
+    }
+    .stats-label {
+      font-weight: 500;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="title">ASN Evidence Collector</h1>
+      <div class="controls">
+        <button id="clear-button">Clear Logs</button>
+      </div>
+    </div>
+
+    <div class="input-section">
+      <div class="input-group">
+        <label for="asn-list">Enter ASN numbers (comma-separated):</label>
+        <textarea id="asn-list" placeholder="AS12345, AS67890"></textarea>
+        <button id="start-button">Start Collection</button>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      <div>Progress: <span id="progress-text">0/0</span></div>
+      <div class="progress-bar">
+        <div id="progress-bar-fill" class="progress-bar-fill"></div>
+      </div>
+      <div class="current-step" id="current-step">Ready to start</div>
+    </div>
+
+    <div id="status" class="status-bar"></div>
+    <div id="debug-log" class="debug-log"></div>
+    
+    <div class="stats">
+      <div>
+        <span class="stats-label">Total Logs:</span>
+        <span id="total-logs">0</span>
+      </div>
+      <div>
+        <span class="stats-label">Errors:</span>
+        <span id="error-count">0</span>
+      </div>
+      <div>
+        <span class="stats-label">Success:</span>
+        <span id="success-count">0</span>
+      </div>
+      <div>
+        <span class="stats-label">ASNs Processed:</span>
+        <span id="asns-processed">0</span>
+      </div>
+    </div>
+  </div>
+  <script src="debug.js"></script>
+</body>
+</html> 
