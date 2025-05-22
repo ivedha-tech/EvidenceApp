@@ -209,7 +209,7 @@ async function processASN(asn) {
     sendLogToDebug('Waiting for search results page');
     sendStepUpdate('Waiting for search results');
     await waitForPageLoad(tab.id);
-    await waitForNetworkIdle(tab.id);
+    // await waitForNetworkIdle(tab.id);
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Take screenshot
