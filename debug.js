@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Send message to background script to start processing
       chrome.runtime.sendMessage({ 
         action: 'startProcessing',
-        asn: asns[0]
+        asnList: asnList
       }, (response) => {
         if (response && response.success) {
           log('Background script started processing', 'success');
