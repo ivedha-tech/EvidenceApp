@@ -171,6 +171,20 @@ async function createDownloadFolder() {
   return folderName;
 }
 
+// Function to store screenshot URLs
+async function storeScreenshotUrl(folderName, asn, profileName, screenshotUrl) {
+  const data = await chrome.storage.local.get(['screenshotUrls']);
+  const screenshotUrls = data.screenshotUrls || {};
+  if (!screenshotUrls[folderName]) {
+    screenshotUrls[folderName] = {};
+  }
+  if (!screenshotUrls[folderName][asn]) {
+    screenshotUrls[folderName][asn] = {};
+  }
+  screenshotUrls[folderName][asn][profileName] = screenshotUrl;
+  await chrome.storage.local.set({ screenshotUrls });
+}
+
 // Generic function to capture and save screenshot
 async function captureAndSaveScreenshot(prefix = 'screenshot', folderName) {
   sendLogToDebug(':: Background: Attempting to capture screenshot...');
@@ -191,7 +205,7 @@ async function captureAndSaveScreenshot(prefix = 'screenshot', folderName) {
   });
   sendLogToDebug(':: Background: Screenshot download initiated');
   
-  return true;
+  return screenshot; // Return the screenshot URL
 }
 
 // Function to process a single ASN
@@ -212,7 +226,8 @@ async function processASN(webName, url, asn, folderName) {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Capture and save screenshot
-    await captureAndSaveScreenshot(asn+"-"+webName, folderName);
+    const screenshotUrl = await captureAndSaveScreenshot(asn+"-"+webName, folderName);
+    await storeScreenshotUrl(folderName, asn, webName, screenshotUrl);
 
     sendLogToDebug(':: Background: ASN processing completed successfully');
     sendLogToDebug('ASN processing completed successfully', 'success');
@@ -232,6 +247,126 @@ async function processASN(webName, url, asn, folderName) {
   }
 }
 
+// Function to create Word document with all screenshots
+async function createSummaryDocument(folderName, asns) {
+  sendLogToDebug(':: Background: Creating summary document');
+  try {
+    // Get stored screenshot URLs
+    const data = await chrome.storage.local.get(['screenshotUrls']);
+    const screenshotUrls = data.screenshotUrls?.[folderName] || {};
+
+    // Create sections for each ASN
+    const asnSections = asns.map(asn => {
+      const asnData = screenshotUrls[asn] || {};
+      return `
+        <div class="asn-section">
+          <h2 class="asn-title">ASN: ${asn}</h2>
+          <div class="screenshot-title">GitHub Profile 1</div>
+          <img class="screenshot" src="${asnData['GitHub Profile 1'] || ''}" alt="GitHub Profile 1">
+          <div class="screenshot-title">GitHub Profile 2</div>
+          <img class="screenshot" src="${asnData['GitHub Profile 2'] || ''}" alt="GitHub Profile 2">
+        </div>
+      `;
+    }).join('');
+
+    // Create HTML content
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>ASN Evidence Summary</title>
+        <style>
+          body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+          .header { margin-bottom: 30px; }
+          .timestamp { color: #666; margin-bottom: 20px; }
+          .asn-section { margin-bottom: 40px; page-break-after: always; }
+          .asn-title { font-size: 24px; color: #333; margin-bottom: 20px; }
+          .screenshot { max-width: 100%; margin-bottom: 20px; }
+          .screenshot-title { font-size: 18px; color: #444; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>ASN Evidence Summary</h1>
+          <div class="timestamp">Generated on: ${new Date().toLocaleString()}</div>
+        </div>
+        ${asnSections}
+      </body>
+      </html>
+    `;
+
+    // Create Word document content
+    const wordContent = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+            xmlns:w='urn:schemas-microsoft-com:office:word' 
+            xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset="UTF-8">
+        <title>ASN Evidence Summary</title>
+        <style>
+          @page { size: 8.5in 11in; margin: 1in; }
+          body { font-family: Arial, sans-serif; }
+          .header { margin-bottom: 30px; }
+          .timestamp { color: #666; margin-bottom: 20px; }
+          .asn-section { margin-bottom: 40px; page-break-after: always; }
+          .asn-title { font-size: 24px; color: #333; margin-bottom: 20px; }
+          .screenshot { max-width: 100%; margin-bottom: 20px; }
+          .screenshot-title { font-size: 18px; color: #444; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>ASN Evidence Summary</h1>
+          <div class="timestamp">Generated on: ${new Date().toLocaleString()}</div>
+        </div>
+        ${asnSections}
+      </body>
+      </html>
+    `;
+
+    // Save HTML version
+    const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+    const htmlBlobUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(htmlBlob);
+    });
+    
+    await chrome.downloads.download({
+      url: htmlBlobUrl,
+      filename: `${folderName}/ASN-Evidence-Summary.html`,
+      saveAs: false
+    });
+
+    // Save Word version
+    const wordBlob = new Blob([wordContent], { type: 'application/msword' });
+    const wordBlobUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(wordBlob);
+    });
+    
+    await chrome.downloads.download({
+      url: wordBlobUrl,
+      filename: `${folderName}/ASN-Evidence-Summary.doc`,
+      saveAs: false
+    });
+    
+    // Clean up stored URLs
+    const updatedScreenshotUrls = data.screenshotUrls || {};
+    delete updatedScreenshotUrls[folderName];
+    await chrome.storage.local.set({ screenshotUrls: updatedScreenshotUrls });
+    
+    sendLogToDebug(':: Background: Summary documents created successfully');
+    return true;
+  } catch (error) {
+    console.error(':: Background: Error creating summary documents:', error);
+    sendLogToDebug(`Error creating summary documents: ${error.message}`, 'error');
+    throw error;
+  }
+}
+
 // Function to process next ASN
 async function processNextASN() {
   sendLogToDebug(':: Background: Starting to process next ASN');
@@ -241,6 +376,16 @@ async function processNextASN() {
   if (currentASNIndex >= totalASNs) {
     sendLogToDebug(':: Background: All ASNs processed');
     sendLogToDebug('All ASNs processed', 'success');
+    sendStepUpdate('Creating summary document');
+    
+    try {
+      // Create summary document with all screenshots
+      await createSummaryDocument(downloadFolder, pendingASNs);
+      sendLogToDebug('Summary document created successfully', 'success');
+    } catch (error) {
+      sendLogToDebug(`Error creating summary document: ${error.message}`, 'error');
+    }
+    
     sendStepUpdate('All ASNs processed');
     return;
   }
