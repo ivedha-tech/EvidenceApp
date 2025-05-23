@@ -163,8 +163,16 @@ async function openWebsite(url, siteName) {
   return tab;
 }
 
+// Function to create download folder
+async function createDownloadFolder() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const folderName = `ASN-Evidence-${timestamp}`;
+  sendLogToDebug(`:: Background: Creating download folder: ${folderName}`);
+  return folderName;
+}
+
 // Generic function to capture and save screenshot
-async function captureAndSaveScreenshot(prefix = 'screenshot') {
+async function captureAndSaveScreenshot(prefix = 'screenshot', folderName) {
   sendLogToDebug(':: Background: Attempting to capture screenshot...');
   sendLogToDebug('Taking screenshot');
   sendStepUpdate('Capturing screenshot');
@@ -173,7 +181,7 @@ async function captureAndSaveScreenshot(prefix = 'screenshot') {
   sendLogToDebug('Screenshot captured successfully');
   
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `${prefix}-${timestamp}.png`;
+  const filename = `${folderName}/${prefix}-${timestamp}.png`;
   
   sendLogToDebug(':: Background: Initiating screenshot download...');
   await chrome.downloads.download({
@@ -187,7 +195,7 @@ async function captureAndSaveScreenshot(prefix = 'screenshot') {
 }
 
 // Function to process a single ASN
-async function processASN(webName, url, asn) {
+async function processASN(webName, url, asn, folderName) {
   sendLogToDebug(`:: Background: Starting to process ASN: ${asn}`);
   sendLogToDebug(`Starting to process ASN: ${asn}`);
   let tab = null;
@@ -204,7 +212,7 @@ async function processASN(webName, url, asn) {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Capture and save screenshot
-    await captureAndSaveScreenshot(asn+"-"+webName);
+    await captureAndSaveScreenshot(asn+"-"+webName, folderName);
 
     sendLogToDebug(':: Background: ASN processing completed successfully');
     sendLogToDebug('ASN processing completed successfully', 'success');
@@ -224,41 +232,11 @@ async function processASN(webName, url, asn) {
   }
 }
 
-// Example of how to use these functions for another website
-async function processOtherWebsite(url, siteName) {
-  let tab = null;
-  try {
-    // Open any website
-    tab = await openWebsite(url, siteName);
-    
-    // Wait for the page to load
-    await waitForPageLoad(tab.id);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Capture and save screenshot with custom prefix
-    await captureAndSaveScreenshot(`${siteName.toLowerCase()}-screenshot`);
-    
-    return true;
-  } catch (error) {
-    console.error(`:: Background: Error processing ${siteName}:`, error);
-    sendLogToDebug(`Error processing ${siteName}: ${error.message}`, 'error');
-    throw error;
-  } finally {
-    if (tab) {
-      try {
-        await chrome.tabs.remove(tab.id);
-      } catch (error) {
-        sendLogToDebug(`Error closing tab: ${error.message}`, 'error');
-      }
-    }
-  }
-}
-
 // Function to process next ASN
 async function processNextASN() {
   sendLogToDebug(':: Background: Starting to process next ASN');
-  const data = await chrome.storage.local.get(['pendingASNs', 'currentASNIndex', 'totalASNs']);
-  const { pendingASNs, currentASNIndex, totalASNs } = data;
+  const data = await chrome.storage.local.get(['pendingASNs', 'currentASNIndex', 'totalASNs', 'downloadFolder']);
+  const { pendingASNs, currentASNIndex, totalASNs, downloadFolder } = data;
   
   if (currentASNIndex >= totalASNs) {
     sendLogToDebug(':: Background: All ASNs processed');
@@ -273,11 +251,9 @@ async function processNextASN() {
     sendLogToDebug(`Processing ASN ${currentASNIndex + 1}/${totalASNs}: ${asn}`);
     sendProgressUpdate(currentASNIndex + 1, totalASNs);
     
-  
     const githubUrl = 'https://github.com/'.concat(asn);
-    // set webs 
-    await processASN('GitHub Profile 1',githubUrl,asn);
-    await processASN('GitHub Profile 2',githubUrl,asn);
+    await processASN('GitHub Profile 1', githubUrl, asn, downloadFolder);
+    await processASN('GitHub Profile 2', githubUrl, asn, downloadFolder);
     // Update index and process next ASN
     await chrome.storage.local.set({ currentASNIndex: currentASNIndex + 1 });
     processNextASN();
@@ -292,11 +268,15 @@ async function processASNList(asnList) {
   // Split the comma-separated list and trim whitespace
   const asns = asnList.split(',').map(asn => asn.trim());
   
+  // Create download folder
+  const folderName = await createDownloadFolder();
+  
   // Store the ASNs and reset the index
   await chrome.storage.local.set({
     pendingASNs: asns,
     currentASNIndex: 0,
-    totalASNs: asns.length
+    totalASNs: asns.length,
+    downloadFolder: folderName
   });
   
   // Start processing
