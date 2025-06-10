@@ -53,7 +53,7 @@ class GitHubProfileHandler(PageHandler):
         """Basic GitHub profile - no interactions needed"""
         try:
             # Wait for profile to load
-            wait.until(EC.presence_of_element_located((By.CLASS_NAME, "avatar-user")))
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".avatar-user, .Avatar--large, [data-testid='avatar']")))
         except TimeoutException:
             logger.warning("GitHub profile elements not found")
 
@@ -73,7 +73,7 @@ class GitHubRepositoriesHandler(PageHandler):
             time.sleep(2)
             # Try to click on a language filter if available
             try:
-                language_filter = driver.find_element(By.CSS_SELECTOR, "[data-testid='filter-by-language']")
+                language_filter = driver.find_element(By.CSS_SELECTOR, "[data-testid='filter-by-language'], .select-menu-button")
                 language_filter.click()
                 time.sleep(1)
             except NoSuchElementException:
@@ -97,11 +97,167 @@ class GitHubFollowersHandler(PageHandler):
         except Exception as e:
             logger.warning(f"Error on followers page: {e}")
 
+class KibanaHandler(PageHandler):
+    """Handler for Kibana login and dashboard"""
+    
+    def __init__(self, kibana_url="https://your-kibana-instance.com", username="admin", password="password"):
+        self.kibana_url = kibana_url
+        self.username = username
+        self.password = password
+    
+    def get_url(self, asn):
+        # For Kibana, we don't use ASN in URL, just return the base Kibana URL
+        return f'{self.kibana_url}/login'
+    
+    def get_page_name(self):
+        return 'Kibana Dashboard'
+    
+    def perform_interactions(self, driver, wait):
+        """Login to Kibana and wait for main dashboard"""
+        try:
+            logger.info(f"Attempting to login to Kibana at {self.kibana_url}")
+            
+            # Wait for login page to load
+            time.sleep(3)
+            
+            # Try different possible username field selectors
+            username_field = None
+            username_selectors = [
+                'input[name="username"]',
+                'input[name="user"]',
+                'input[id="username"]',
+                'input[type="text"]',
+                'input[placeholder*="username" i]',
+                'input[placeholder*="user" i]',
+                '.form-control[type="text"]'
+            ]
+            
+            for selector in username_selectors:
+                try:
+                    username_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                    logger.info(f"Found username field with selector: {selector}")
+                    break
+                except TimeoutException:
+                    continue
+            
+            if not username_field:
+                logger.error("Could not find username field")
+                return
+            
+            # Try different possible password field selectors
+            password_field = None
+            password_selectors = [
+                'input[name="password"]',
+                'input[type="password"]',
+                'input[id="password"]',
+                '.form-control[type="password"]'
+            ]
+            
+            for selector in password_selectors:
+                try:
+                    password_field = driver.find_element(By.CSS_SELECTOR, selector)
+                    logger.info(f"Found password field with selector: {selector}")
+                    break
+                except NoSuchElementException:
+                    continue
+            
+            if not password_field:
+                logger.error("Could not find password field")
+                return
+            
+            # Clear and enter credentials
+            username_field.clear()
+            username_field.send_keys(self.username)
+            logger.info("Entered username")
+            
+            password_field.clear()
+            password_field.send_keys(self.password)
+            logger.info("Entered password")
+            
+            # Find and click login button
+            login_button = None
+            login_selectors = [
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'button[name="login"]',
+                'button[id="login"]',
+                '.btn-primary',
+                '.login-button',
+                'button:contains("Log in")',
+                'button:contains("Login")',
+                'button:contains("Sign in")'
+            ]
+            
+            for selector in login_selectors:
+                try:
+                    if ':contains' in selector:
+                        # Use XPath for text-based selectors
+                        xpath_selector = f"//button[contains(text(), '{selector.split(':contains(\"')[1].split('\")')[0]}')]"
+                        login_button = driver.find_element(By.XPATH, xpath_selector)
+                    else:
+                        login_button = driver.find_element(By.CSS_SELECTOR, selector)
+                    logger.info(f"Found login button with selector: {selector}")
+                    break
+                except NoSuchElementException:
+                    continue
+            
+            if not login_button:
+                logger.error("Could not find login button")
+                return
+            
+            # Click login button
+            login_button.click()
+            logger.info("Clicked login button")
+            
+            # Wait for successful login - look for dashboard elements
+            logger.info("Waiting for Kibana dashboard to load...")
+            
+            # Wait for login page to disappear and dashboard elements to appear
+            dashboard_selectors = [
+                '[data-test-subj="kibana-logo"]',
+                '.globalHeader',
+                '.application',
+                '.kibana-body',
+                '[data-test-subj="discover"]',
+                '.euiHeader',
+                '.kbnGlobalNav',
+                '.chromeNavigation'
+            ]
+            
+            dashboard_loaded = False
+            for selector in dashboard_selectors:
+                try:
+                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                    logger.info(f"Dashboard loaded - found element: {selector}")
+                    dashboard_loaded = True
+                    break
+                except TimeoutException:
+                    continue
+            
+            if not dashboard_loaded:
+                # Alternative check - wait for URL change indicating successful login
+                try:
+                    wait.until(lambda driver: "/login" not in driver.current_url.lower())
+                    logger.info("Login successful - URL changed from login page")
+                    dashboard_loaded = True
+                except TimeoutException:
+                    logger.warning("Could not confirm dashboard load, but proceeding")
+            
+            # Additional wait for dashboard to fully load
+            time.sleep(5)
+            logger.info("Kibana login and dashboard load completed")
+            
+        except Exception as e:
+            logger.error(f"Error during Kibana login: {str(e)}")
+
 class ASNEvidenceCollector:
     def __init__(self):
         self.setup_driver()
         self.create_output_directory()
         self.page_handlers = self.get_default_page_handlers()
+        self.github_logged_in = False
+        self.github_username = None
+        self.github_password = None
 
     def setup_driver(self):
         """Set up the Chrome WebDriver with appropriate options"""
@@ -116,6 +272,98 @@ class ASNEvidenceCollector:
         self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         self.wait = WebDriverWait(self.driver, 15)
+
+    def set_github_credentials(self, username, password):
+        """Set GitHub credentials for authentication"""
+        self.github_username = username
+        self.github_password = password
+        logger.info("GitHub credentials set")
+
+    def login_to_github(self):
+        """Login to GitHub using provided credentials"""
+        if not self.github_username or not self.github_password:
+            logger.warning("GitHub credentials not provided, skipping login")
+            return False
+
+        if self.github_logged_in:
+            logger.info("Already logged in to GitHub")
+            return True
+
+        try:
+            logger.info("Attempting to login to GitHub...")
+            self.driver.get("https://github.com/login")
+            
+            # Wait for login page to load
+            username_field = self.wait.until(EC.presence_of_element_located((By.ID, "login_field")))
+            password_field = self.driver.find_element(By.ID, "password")
+            
+            # Enter credentials
+            username_field.clear()
+            username_field.send_keys(self.github_username)
+            password_field.clear()
+            password_field.send_keys(self.github_password)
+            
+            # Click login button
+            login_button = self.driver.find_element(By.NAME, "commit")
+            login_button.click()
+            
+            # Wait for login to complete - check for successful login
+            try:
+                # Wait for either dashboard or 2FA page
+                self.wait.until(lambda driver: 
+                    "github.com/login" not in driver.current_url or
+                    driver.find_elements(By.CSS_SELECTOR, "[data-target='sessions.webauthn-challenge']") or
+                    driver.find_elements(By.CSS_SELECTOR, "input[name='otp']")
+                )
+                
+                # Check if we're on 2FA page
+                if driver.find_elements(By.CSS_SELECTOR, "input[name='otp']"):
+                    logger.info("Two-factor authentication required")
+                    print("\n" + "="*50)
+                    print("TWO-FACTOR AUTHENTICATION REQUIRED")
+                    print("="*50)
+                    print("Please check your authenticator app or SMS for the 6-digit code.")
+                    
+                    otp_code = input("Enter your 6-digit authentication code: ").strip()
+                    
+                    if otp_code and len(otp_code) == 6:
+                        otp_field = self.driver.find_element(By.CSS_SELECTOR, "input[name='otp']")
+                        otp_field.clear()
+                        otp_field.send_keys(otp_code)
+                        
+                        # Click verify button
+                        verify_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+                        verify_button.click()
+                        
+                        # Wait for 2FA completion
+                        self.wait.until(lambda driver: "github.com/login" not in driver.current_url)
+                    else:
+                        logger.error("Invalid 2FA code provided")
+                        return False
+                
+                # Verify successful login
+                time.sleep(3)
+                if "github.com/login" not in self.driver.current_url:
+                    self.github_logged_in = True
+                    logger.info("Successfully logged in to GitHub")
+                    return True
+                else:
+                    logger.error("Login failed - still on login page")
+                    return False
+                    
+            except TimeoutException:
+                logger.error("Login timeout or failed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during GitHub login: {str(e)}")
+            return False
+
+    def ensure_github_login(self):
+        """Ensure GitHub login before accessing GitHub pages"""
+        if not self.github_logged_in and (self.github_username and self.github_password):
+            return self.login_to_github()
+        return self.github_logged_in or not (self.github_username and self.github_password)
 
     def create_output_directory(self):
         """Create a timestamped directory for storing evidence"""
@@ -236,7 +484,18 @@ class ASNEvidenceCollector:
         logger.info(f'Processing {handler.get_page_name()} for ASN: {asn}')
         
         try:
+            # Check if this is a GitHub page and ensure login
             url = handler.get_url(asn)
+            if "github.com" in url and not self.ensure_github_login():
+                logger.error("Failed to login to GitHub, skipping GitHub pages")
+                return {
+                    'page_name': handler.get_page_name(),
+                    'url': url,
+                    'screenshot_path': None,
+                    'success': False,
+                    'error': 'GitHub login failed'
+                }
+            
             self.driver.get(url)
             
             # Perform page-specific interactions
@@ -435,13 +694,60 @@ def main():
         print("No valid ASNs provided. Exiting...")
         return
     
+    # Ask for GitHub credentials
+    print("\n" + "="*50)
+    print("GITHUB AUTHENTICATION")
+    print("="*50)
+    print("GitHub credentials are required to access profiles and repositories.")
+    print("Your credentials will only be used for this session and not stored.")
+    
+    use_login = input("\nDo you want to login to GitHub? (y/n): ").lower().strip()
+    
+    github_username = None
+    github_password = None
+    
+    if use_login in ['y', 'yes']:
+        github_username = input("GitHub username/email: ").strip()
+        if github_username:
+            import getpass
+            github_password = getpass.getpass("GitHub password: ")
+            if not github_password:
+                print("Warning: No password provided. Some GitHub pages may not be accessible.")
+        else:
+            print("Warning: No username provided. Some GitHub pages may not be accessible.")
+    else:
+        print("Warning: Skipping GitHub login. Some pages may not be accessible without authentication.")
+    
+    # Ask for Kibana configuration
+    print("\n" + "="*50)
+    print("KIBANA CONFIGURATION")
+    print("="*50)
+    use_kibana = input("Do you want to include Kibana dashboard? (y/n): ").lower().strip()
+    
     print(f"\nProcessing {len(asn_list)} ASN(s)...")
-    print(f"Each ASN will be processed across {len(ASNEvidenceCollector().get_default_page_handlers())} pages")
+    base_handlers = len(ASNEvidenceCollector().get_default_page_handlers())
+    total_handlers = base_handlers + (1 if use_kibana in ['y', 'yes'] else 0)
+    print(f"Each ASN will be processed across {total_handlers} pages")
     
     # Initialize and run the collector
     collector = ASNEvidenceCollector()
     
-    # Example of adding a custom page handler:
+    # Set GitHub credentials if provided
+    if github_username and github_password:
+        collector.set_github_credentials(github_username, github_password)
+    
+    # Add Kibana handler if requested
+    if use_kibana in ['y', 'yes']:
+        # Hardcoded Kibana credentials - modify these for your Kibana instance
+        kibana_url = "https://your-kibana-instance.com"  # Change this to your Kibana URL
+        kibana_username = "admin"  # Change this to your Kibana username
+        kibana_password = "password"  # Change this to your Kibana password
+        
+        kibana_handler = KibanaHandler(kibana_url, kibana_username, kibana_password)
+        collector.add_page_handler(kibana_handler)
+        print(f"Added Kibana handler for: {kibana_url}")
+    
+    # Example of adding other custom page handlers:
     # custom_handler = CustomPageHandler("https://example.com/{asn}", "Custom Page")
     # collector.add_page_handler(custom_handler)
     
