@@ -14,6 +14,14 @@ from docx.shared import Inches
 import logging
 from abc import ABC, abstractmethod
 from PIL import Image, ImageDraw, ImageFont
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from office365.runtime.auth.authentication_context import AuthenticationContext
+from office365.sharepoint.client_context import ClientContext
+from office365.sharepoint.files.file import File
 
 # Set up logging
 logging.basicConfig(
@@ -192,7 +200,9 @@ class KibanaHandler(PageHandler):
                 try:
                     if ':contains' in selector:
                         # Use XPath for text-based selectors
-                        xpath_selector = f"//button[contains(text(), '{selector.split(':contains(\"')[1].split('\")')[0]}')]"
+                        # Extract text from :contains("text") format
+                        text_part = selector.split(':contains("')[1].split('")')[0]
+                        xpath_selector = f"//button[contains(text(), '{text_part}')]"
                         login_button = driver.find_element(By.XPATH, xpath_selector)
                     else:
                         login_button = driver.find_element(By.CSS_SELECTOR, selector)
@@ -258,6 +268,19 @@ class ASNEvidenceCollector:
         self.github_logged_in = False
         self.github_username = None
         self.github_password = None
+        
+        # SharePoint configuration
+        self.sharepoint_url = None
+        self.sharepoint_folder = None
+        self.sharepoint_username = None
+        self.sharepoint_password = None
+        
+        # Email configuration
+        self.smtp_server = None
+        self.smtp_port = None
+        self.email_username = None
+        self.email_password = None
+        self.email_recipients = []
 
     def setup_driver(self):
         """Set up the Chrome WebDriver with appropriate options"""
@@ -278,6 +301,23 @@ class ASNEvidenceCollector:
         self.github_username = username
         self.github_password = password
         logger.info("GitHub credentials set")
+    
+    def set_sharepoint_config(self, sharepoint_url, folder_path, username, password):
+        """Set SharePoint configuration for document upload"""
+        self.sharepoint_url = sharepoint_url
+        self.sharepoint_folder = folder_path
+        self.sharepoint_username = username
+        self.sharepoint_password = password
+        logger.info("SharePoint configuration set")
+    
+    def set_email_config(self, smtp_server, smtp_port, username, password, recipients):
+        """Set email configuration for sending reports"""
+        self.smtp_server = smtp_server
+        self.smtp_port = smtp_port
+        self.email_username = username
+        self.email_password = password
+        self.email_recipients = recipients if isinstance(recipients, list) else [recipients]
+        logger.info(f"Email configuration set for {len(self.email_recipients)} recipient(s)")
 
     def login_to_github(self):
         """Login to GitHub using provided credentials"""
@@ -317,7 +357,7 @@ class ASNEvidenceCollector:
                 )
                 
                 # Check if we're on 2FA page
-                if driver.find_elements(By.CSS_SELECTOR, "input[name='otp']"):
+                if self.driver.find_elements(By.CSS_SELECTOR, "input[name='otp']"):
                     logger.info("Two-factor authentication required")
                     print("\n" + "="*50)
                     print("TWO-FACTOR AUTHENTICATION REQUIRED")
